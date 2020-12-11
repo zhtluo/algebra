@@ -55,24 +55,51 @@ pub const G1_GENERATOR_Y: Fq = field_new!(Fq, "133950654494447647302047137994192
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::bls12_381::Fr;
     use ark_ec::ProjectiveCurve;
-    use ark_ff::UniformRand;
+    use ark_ff::{BigInteger256, PrimeField, UniformRand};
 
     #[test]
     fn batch_normalization() {
         let mut rng = ark_ff::test_rng();
 
         let mut g_s = [G1Projective::zero(); 100];
-        for i in 0..100 {
-            g_s[i] = G1Projective::rand(&mut rng);
+        for g in g_s.iter_mut() {
+            *g = G1Projective::rand(&mut rng);
         }
 
         let mut g_s_affine_naive = [G1Affine::zero(); 100];
-        for (i, g) in g_s.iter().enumerate() {
-            g_s_affine_naive[i] = g.into_affine();
+        for (g, g_affine) in g_s.iter().zip(g_s_affine_naive.iter_mut()) {
+            *g_affine = g.into_affine();
         }
 
         let g_s_affine_fast = G1Projective::batch_normalization_into_affine(&g_s);
         assert_eq!(g_s_affine_naive.as_ref(), g_s_affine_fast.as_slice());
+    }
+
+    #[test]
+    fn variable_base_msm() {
+        let mut rng = ark_ff::test_rng();
+
+        let mut g_s = [G1Projective::zero(); 1000];
+        for g in g_s.iter_mut() {
+            *g = G1Projective::rand(&mut rng);
+        }
+
+        let mut scalars = [BigInteger256::default(); 1000];
+        for scalar in scalars.iter_mut() {
+            *scalar = Fr::rand(&mut rng).into_repr();
+        }
+        let naive_sum = g_s
+            .iter()
+            .zip(&scalars)
+            .map(|(g, s)| g.mul(s))
+            .sum::<G1Projective>();
+
+        let g_s = G1Projective::batch_normalization_into_affine(&g_s);
+
+        let fast_sum = ark_ec::msm::VariableBaseMSM::multi_scalar_mul(&g_s, &scalars);
+
+        assert_eq!(naive_sum, fast_sum);
     }
 }
