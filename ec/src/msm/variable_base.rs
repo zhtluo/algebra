@@ -35,7 +35,7 @@ impl VariableBaseMSM {
             .map(|w_start| {
                 let mut res = zero;
                 // We don't need the "zero" bucket, so we only have 2^c - 1 buckets
-                let mut buckets = vec![zero; (1 << c) - 1];
+                let mut buckets = vec![zero; 1 << c];
                 scalars
                     .iter()
                     .zip(bases)
@@ -65,7 +65,7 @@ impl VariableBaseMSM {
                         }
                     });
                 // add res to buckets, so that length is `1 << c`.
-                buckets.push(res);
+                buckets[(1 << c) - 1] = res;
                 buckets
             })
             .flat_map(|bucket| bucket)
