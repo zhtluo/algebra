@@ -64,17 +64,25 @@ impl VariableBaseMSM {
                             }
                         }
                     });
-                let buckets = G::Projective::batch_normalization_into_affine(&buckets);
-
+                // add res to buckets, so that length is `1 << c`.
+                buckets.push(res);
+                buckets
+            })
+            .flat_map(|bucket| bucket)
+            .collect();
+        let bucketed_window_sums = G::Projective::batch_normalization_into_affine(&window_sums);
+        let window_sums = ark_std::cfg_chunks!(bucketed_window_sums, 1 << c)
+            .map(|buckets| {
+                let len = buckets.len();
+                let mut res = buckets.last().unwrap().into_projective();
                 let mut running_sum = G::Projective::zero();
-                for b in buckets.into_iter().rev() {
+                for b in buckets[..(len - 1)].into_iter().rev() {
                     running_sum.add_assign_mixed(&b);
                     res += running_sum;
                 }
-
                 res
             })
-            .collect();
+            .collect::<Vec<_>>();
 
         // We store the sum for the lowest window.
         let lowest = *window_sums.first().unwrap();
