@@ -1,6 +1,12 @@
 
 ## Pending
 
+The main features of this release are:
+
+- Adding the ability to define fields with integer parameters
+- Multi-variate polynomial support
+- Many miscallenous speedups to operations involving polynomials
+
 ### Breaking changes
 - #20 (ark-poly) Move univariate DensePolynomial and SparsePolynomial into a 
     univariate sub-crate. Make this change by:
@@ -11,12 +17,12 @@
 - #51 (ark-ff) Removed `unitary_inverse` from `QuadExtField`. Make this change by
     replacing `x.unitary_inverse()` with `let mut tmp = x.clone(); tmp.conjugate()`
 - #53 (ark-poly) Add `Zero` trait bound to `Polynomial`.
+- #96 (ark-ff) Make the `field_new` macro accept values in integer form, without requiring decomposition into limbs, and without requiring encoding in Montgomery form.
 - #106 (ark-ff, ark-ec) Add `Zeroize` trait bound to `Field, ProjectiveGroup, AffineGroup` traits.
 - #108 (ark-ff) Add `extension_degree()` method to `Field`.
 - #110 (ark-ec) Change the trait bound on the scalar for `mul`, from (essentially) `Into<BigInt>` to `AsRef<[u64]>`
 - #117 (ark-poly) Make the univariate `SparsePolynomial` implement `Polynomial`. Make this change
     by replacing `sparse_poly.evaluate(pt)` to `sparse_poly.evaluate(&pt)`.
-- #96 (ark-ff) Make the `field_new` macro accept values in integer form, without requiring decomposition into limbs, and without requiring encoding in Montgomery form.
 
 ### Features
 - #20 (ark-poly) Add structs/traits for multivariate polynomials
