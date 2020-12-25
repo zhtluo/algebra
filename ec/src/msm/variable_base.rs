@@ -9,13 +9,13 @@ use rayon::prelude::*;
 pub struct VariableBaseMSM;
 
 impl VariableBaseMSM {
-    fn msm_inner<G: AffineCurve>(
+    pub fn multi_scalar_mul<
+        G: AffineCurve,
+        T: Into<<G::ScalarField as PrimeField>::BigInt> + Copy + Sync,
+    >(
         bases: &[G],
-        scalars: &[<G::ScalarField as PrimeField>::BigInt],
-    ) -> G::Projective
-    where
-        G::Projective: ProjectiveCurve<Affine = G>,
-    {
+        scalars: &[T],
+    ) -> G::Projective {
         let c = if scalars.len() < 32 {
             3
         } else {
@@ -27,6 +27,10 @@ impl VariableBaseMSM {
 
         let zero = G::Projective::zero();
         let window_starts: Vec<_> = (0..num_bits).step_by(c).collect();
+        let scalars = ark_std::cfg_iter!(scalars)
+            .map(|s| (*s).into())
+            .collect::<Vec<<G::ScalarField as PrimeField>::BigInt>>();
+        let scalars_and_bases = scalars.iter().zip(bases).filter(|(s, _)| !s.is_zero());
 
         // Each window is of size `c`.
         // We divide up the bits 0..num_bits into windows of size `c`, and
@@ -36,42 +40,45 @@ impl VariableBaseMSM {
                 let mut res = zero;
                 // We don't need the "zero" bucket, so we only have 2^c - 1 buckets
                 let mut buckets = vec![zero; (1 << c) - 1];
-                scalars
-                    .iter()
-                    .zip(bases)
-                    .filter(|(s, _)| !s.is_zero())
-                    .for_each(|(&scalar, base)| {
-                        if scalar == fr_one {
-                            // We only process unit scalars once in the first window.
-                            if w_start == 0 {
-                                res.add_assign_mixed(base);
-                            }
-                        } else {
-                            let mut scalar = scalar;
-
-                            // We right-shift by w_start, thus getting rid of the
-                            // lower bits.
-                            scalar.divn(w_start as u32);
-
-                            // We mod the remaining bits by the window size.
-                            let scalar = scalar.as_ref()[0] % (1 << c);
-
-                            // If the scalar is non-zero, we update the corresponding
-                            // bucket.
-                            // (Recall that `buckets` doesn't have a zero bucket.)
-                            if scalar != 0 {
-                                buckets[(scalar - 1) as usize].add_assign_mixed(base);
-                            }
+                scalars_and_bases.clone().for_each(|(&scalar, base)| {
+                    if scalar == fr_one {
+                        // We only process unit scalars once in the first window.
+                        if w_start == 0 {
+                            res.add_assign_mixed(base);
                         }
-                    });
+                    } else {
+                        let mut scalar = scalar;
+
+                        // We right-shift by w_start, thus getting rid of the
+                        // lower bits.
+                        scalar.divn(w_start as u32);
+
+                        // We mod the remaining bits by the window size.
+                        let scalar = scalar.as_ref()[0] % (1 << c);
+
+                        // If the scalar is non-zero, we update the corresponding
+                        // bucket.
+                        // (Recall that `buckets` doesn't have a zero bucket.)
+                        if scalar != 0 {
+                            buckets[(scalar - 1) as usize].add_assign_mixed(base);
+                        }
+                    }
+                });
                 let buckets = G::Projective::batch_normalization_into_affine(&buckets);
 
                 let mut running_sum = G::Projective::zero();
-                for b in buckets.into_iter().rev() {
-                    running_sum.add_assign_mixed(&b);
-                    res += running_sum;
-                }
-
+                let running_sums = buckets
+                    .into_iter()
+                    .rev()
+                    .map(|b| {
+                        running_sum.add_assign_mixed(&b);
+                        running_sum
+                    })
+                    .collect::<Vec<_>>();
+                let running_sums = G::Projective::batch_normalization_into_affine(&running_sums);
+                running_sums
+                    .into_iter()
+                    .for_each(|sum| res.add_assign_mixed(&sum));
                 res
             })
             .collect();
@@ -81,8 +88,8 @@ impl VariableBaseMSM {
 
         // We're traversing windows from high to low.
         lowest
-            + window_sums[1..]
-                .iter()
+            + &window_sums[1..]
+                .into_iter()
                 .rev()
                 .fold(zero, |mut total, sum_i| {
                     total += sum_i;
@@ -91,12 +98,5 @@ impl VariableBaseMSM {
                     }
                     total
                 })
-    }
-
-    pub fn multi_scalar_mul<G: AffineCurve>(
-        bases: &[G],
-        scalars: &[<G::ScalarField as PrimeField>::BigInt],
-    ) -> G::Projective {
-        Self::msm_inner(bases, scalars)
     }
 }
